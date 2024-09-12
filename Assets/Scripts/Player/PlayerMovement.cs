@@ -1,25 +1,35 @@
 ﻿using System;
 using System.Collections;
-using TreeEditor;
-using UnityEditor.Networking.PlayerConnection;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.Interactions;
 
 public class PlayerMovement : MonoBehaviour
 {
+    public Vector2 PlayerMovementInput { get; private set; }
+
+    [field:SerializeField] public Rigidbody PlayerRigidbody { get; private set; }
+    
     [SerializeField] private float unitSpeed, unitJumpForce;
-    [SerializeField] private Rigidbody playerRigidbody;
     [SerializeField] private float customGravityValue;
 
     [SerializeField, Range(0f,1f)] private float rotationSpeed = 0.25f;
 
     [SerializeField] private float groundRayCheckDistance;
+    
+    private bool isGrounded = true;
 
     private PlayerInputMap playerInput;
-    public Vector2 PlayerMovementInput { get; private set; }
 
-    private bool isGrounded = true;
+    private Vector3 rotationVectorFromInput = Vector2.zero;
+    private float waitTime;
+
+    #region Homing Attack
+    [Header("Homing Attack")]
+    [SerializeField] private float homingSpeed;
+    [SerializeField] private float homingSphereRadius;
+    [SerializeField] private LayerMask attackLayer;
+    Coroutine homingAttackCoroutine;
+    #endregion
 
     private void Awake()
     {
@@ -52,18 +62,17 @@ public class PlayerMovement : MonoBehaviour
 
     private void MoveTowardsInputDirection()
     {
-        float prevYVelocity = playerRigidbody.velocity.y;
+        float prevYVelocity = PlayerRigidbody.velocity.y;
 
         Vector3 newVelocity = new Vector3(PlayerMovementInput.x, 0f, PlayerMovementInput.y) * unitSpeed;
         newVelocity.y = prevYVelocity;
 
         newVelocity.y = isGrounded ? 0f : (newVelocity.y - (customGravityValue * Time.fixedDeltaTime));
 
-        playerRigidbody.velocity = newVelocity;
+        PlayerRigidbody.velocity = newVelocity;
         
     }
 
-    private Vector3 rotationVectorFromInput = Vector2.zero;
     private void RotateTowardsInputDirection()
     {
         if(PlayerMovementInput.magnitude == 0f) { return; }
@@ -72,13 +81,10 @@ public class PlayerMovement : MonoBehaviour
         rotationVectorFromInput.z = PlayerMovementInput.y;
 
         Quaternion lookDirection = Quaternion.LookRotation(rotationVectorFromInput.normalized, Vector3.up);
-        playerRigidbody.rotation = Quaternion.Lerp(playerRigidbody.rotation, lookDirection, rotationSpeed);
+        PlayerRigidbody.rotation = Quaternion.Lerp(PlayerRigidbody.rotation, lookDirection, rotationSpeed);
     }
 
 
-    [SerializeField] private float homingSphereRadius;
-    [SerializeField] private LayerMask attackLayer;
-    Coroutine homingAttackCoroutine;
     private void OnPerformJump(InputAction.CallbackContext ctx)
     {
 
@@ -97,18 +103,18 @@ public class PlayerMovement : MonoBehaviour
 
         if (ctx.action.WasPressedThisFrame() && isGrounded)
         {
-            playerRigidbody.AddForce(Vector3.up * unitJumpForce, ForceMode.Impulse);
+            PlayerRigidbody.AddForce(Vector3.up * unitJumpForce, ForceMode.Impulse);
         }
         else if (ctx.action.WasReleasedThisFrame())
         {
-            float currentYVelocity = playerRigidbody.velocity.y;
+            float currentYVelocity = PlayerRigidbody.velocity.y;
 
             if (currentYVelocity > 0f)
             {
-                Vector3 currentVelocity = playerRigidbody.velocity;
+                Vector3 currentVelocity = PlayerRigidbody.velocity;
                 currentVelocity.y = currentYVelocity / 2f;
 
-                playerRigidbody.velocity = currentVelocity;
+                PlayerRigidbody.velocity = currentVelocity;
 
             }
 
@@ -116,11 +122,10 @@ public class PlayerMovement : MonoBehaviour
 
     }
 
-    [SerializeField] private float homingSpeed;
     private IEnumerator HomingAttack(Transform target)
     {
         this.enabled = false;
-        playerRigidbody.velocity = Vector3.zero;
+        PlayerRigidbody.velocity = Vector3.zero;
 
         float totalDuration = 2f;
         float counter = 0f;
@@ -129,8 +134,8 @@ public class PlayerMovement : MonoBehaviour
         {
             counter += Time.deltaTime;
 
-            playerRigidbody.transform.position = 
-                Vector3.Lerp(playerRigidbody.transform.position, target.position,
+            PlayerRigidbody.transform.position = 
+                Vector3.Lerp(PlayerRigidbody.transform.position, target.position,
                                 homingSpeed * Time.deltaTime);
 
             yield return null;
@@ -140,7 +145,6 @@ public class PlayerMovement : MonoBehaviour
 
     }
 
-    //[SerializeField] private float pushValue = 10f;
     private void OnTriggerEnter(Collider other)
     {
         //Debug.Log("C: " + Convert.ToString(1 << collision.gameObject.layer, 2).PadLeft(32, '0'));
@@ -152,11 +156,7 @@ public class PlayerMovement : MonoBehaviour
 
         if (((1 << other.gameObject.layer) & attackLayer) != 0)
         {
-            //Destroy(other.gameObject);
-            //playerRigidbody.velocity  = Vector3.up * pushValue;
             if (homingAttackCoroutine != null) StopCoroutine(homingAttackCoroutine);
-            //StartCoroutine(DisableControl());
-            //this.enabled = true;
         }
     }
 
@@ -166,16 +166,13 @@ public class PlayerMovement : MonoBehaviour
         playerInput.Movement.Disable();
         this.waitTime = waitTime;
         StartCoroutine(DisableControl());
-        playerRigidbody.velocity = direction.normalized * force;
+        PlayerRigidbody.velocity = direction.normalized * force;
     }
 
-
-
-    private float waitTime;
     private IEnumerator DisableControl()
     {
-        //this.enabled = false;
-        //playerInput.Movement.Disable();
+        this.enabled = false;
+        playerInput.Movement.Disable();
 
         yield return new WaitForSeconds(waitTime);
 
@@ -184,11 +181,14 @@ public class PlayerMovement : MonoBehaviour
     }
 
 
+#if UNITY_EDITOR
 
-    private void OnDrawGizmos()
+    private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position + (transform.forward * homingSphereRadius), homingSphereRadius);
     }
+
+#endif
 
 }

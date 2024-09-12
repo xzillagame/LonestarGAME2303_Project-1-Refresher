@@ -5,17 +5,13 @@ public class PlayerAnimationController : MonoBehaviour
     [SerializeField] private PlayerMovement playerMovement;
 
     [SerializeField] private Animator playerAnimator;
+
     [SerializeField] private string speedAnimationParamaterName = "UnitSpeed";
+    [SerializeField] private string horizontalVelocityParamName = "HorizontalVelocity";
 
-
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
     void Update()
     {
         playerAnimator.SetFloat(speedAnimationParamaterName, playerMovement.PlayerMovementInput.magnitude);
+        playerAnimator.SetFloat(horizontalVelocityParamName, playerMovement.PlayerRigidbody.velocity.y);
     }
 }
